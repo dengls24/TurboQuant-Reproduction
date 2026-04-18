@@ -28,7 +28,7 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MAX_NEW_TOKENS = 100
+MAX_NEW_TOKENS = 512  # enough room for Qwen3 thinking + answer
 
 
 # ─── Test data: representative tasks ───
@@ -184,8 +184,9 @@ def main():
 
     configs = [
         ("Full Cache (16-bit)", None),
-        ("TurboQuant (2.5-bit)", 2.5),
+        ("TurboQuant (4-bit)",  4.0),
         ("TurboQuant (3.5-bit)", 3.5),
+        ("TurboQuant (2.5-bit)", 2.5),
     ]
 
     for config_name, eff_bits in configs:

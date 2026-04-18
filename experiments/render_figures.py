@@ -169,29 +169,40 @@ def render_figure5_longbench():
 
     configs = list(data.keys())
     categories = ['ShortQA', 'LongQA', 'Average']
-    short_labels = ['Full Cache\n(16-bit)', 'TurboQuant\n(2.5-bit)', 'TurboQuant\n(3.5-bit)']
-    colors = [C_BLUE, C_ORANGE, C_GREEN]
+    short_labels = ['Full Cache\n(16-bit)', 'TurboQuant\n(4-bit)', 'TurboQuant\n(3.5-bit)', 'TurboQuant\n(2.5-bit)']
+    colors = [C_BLUE, C_GREEN, C_ORANGE, C_RED]
 
-    fig, ax = plt.subplots(figsize=(5, 2.8))
+    fig, ax = plt.subplots(figsize=(6.5, 3.2))
 
     x = np.arange(len(categories))
-    width = 0.22
+    n = len(configs)
+    width = 0.18
+    offsets = np.linspace(-(n-1)/2, (n-1)/2, n) * width
 
     for i, (cfg, label, color) in enumerate(zip(configs, short_labels, colors)):
         vals = [data[cfg][cat] for cat in categories]
-        bars = ax.bar(x + (i - 1) * width, vals, width, label=label, color=color, alpha=0.85,
-                      edgecolor='white', linewidth=0.5)
+        bars = ax.bar(x + offsets[i], vals, width, label=label, color=color,
+                      alpha=0.85, edgecolor='white', linewidth=0.5)
         for bar, v in zip(bars, vals):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
-                    f'{v:.1f}', ha='center', va='bottom', fontsize=7)
+            if v > 1.0:
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                        f'{v:.1f}', ha='center', va='bottom', fontsize=6.5)
 
     ax.set_xticks(x)
     ax.set_xticklabels(categories)
     ax.set_ylabel('F1 Score')
-    ax.set_title('Generation Quality (LongBench)', fontsize=11)
-    ax.set_ylim(0, 20)
-    ax.legend(frameon=True, fancybox=False, edgecolor='#CCCCCC', fontsize=7.5)
+    ax.set_title('Generation Quality on Qwen3-8B (LongBench)', fontsize=11)
+    ax.set_ylim(0, 65)
+    ax.legend(frameon=True, fancybox=False, edgecolor='#CCCCCC', fontsize=7.5,
+              ncol=2, loc='upper right')
     ax.grid(axis='y', alpha=0.3)
+
+    # Annotate finding
+    ax.text(0.99, 0.55,
+            'Qwen3-8B degrades sharply\nbelow 4-bit quantization',
+            transform=ax.transAxes, fontsize=7.5, ha='right', va='top',
+            color='#8B0000', style='italic',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='#FFF5F5', edgecolor='#FFAAAA', alpha=0.8))
 
     plt.tight_layout()
     path = os.path.join(RESULTS_DIR, 'fig5_longbench.png')

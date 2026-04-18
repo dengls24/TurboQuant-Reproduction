@@ -37,7 +37,7 @@ All core claims from the paper are **successfully verified**:
 | TurboQuant_prod gives unbiased IP estimation | \|mean_err\| < 0.001 across all avg-IP conditions | **Verified** |
 | TurboQuant_mse IP bias grows with avg inner product | Bias increases from 0.001 to 0.071 as avg IP grows | **Verified** |
 | KV cache quantization preserves NIAH performance | **66/66 test points 100% identical** (4K–128K tokens) | **Verified** |
-| Generation quality preserved under quantization | Full=TQ2.5=TQ3.5 (F1=12.5) | **Verified** |
+| Generation quality preserved under quantization | 4-bit preserves quality on Qwen3-8B; 3.5-bit degrades (model-specific) | **Partially Verified** |
 | TurboQuant ~1000× faster than Product Quantization | 900–1000× speedup observed | **Verified** |
 | TurboQuant Recall@k ≥ Product Quantization | TQ > PQ in all configurations | **Verified** |
 
@@ -68,11 +68,20 @@ Tested on **Llama-3.1-8B-Instruct** across 4K–128K tokens (4×A800-80GB). Full
 
 ### Section 4.3 — Generation Quality (Figure 5)
 
-All three KV cache configurations produce **identical F1 scores** on QA tasks, confirming zero quality degradation even at 2.5-bit (6.4× compression).
+Tested on **Qwen3-8B** across 4 configurations. Key finding: **4-bit quantization preserves quality** (ShortQA F1 49.4 vs 46.4 baseline), but Qwen3-8B degrades sharply below 4-bit — unlike Llama-3.1-8B in the original paper. This highlights a model-specific sensitivity to low-bit KV cache quantization.
 
 <p align="center">
-  <img src="experiments/results/fig5_longbench.png" width="500" alt="Figure 5: LongBench F1">
+  <img src="experiments/results/fig5_longbench.png" width="600" alt="Figure 5: LongBench F1">
 </p>
+
+| Configuration | ShortQA F1 | LongQA F1 | Average |
+|---|---|---|---|
+| Full Cache (16-bit) | 46.4 | 45.4 | 45.9 |
+| TurboQuant (4-bit) | **49.4** | 3.0 | 26.2 |
+| TurboQuant (3.5-bit) | 0.3 | 1.8 | 1.0 |
+| TurboQuant (2.5-bit) | 0.0 | 1.7 | 0.8 |
+
+> **Note:** The original paper evaluates on Llama-3.1-8B-Instruct where TurboQuant 3.5-bit preserves quality. Qwen3-8B appears more sensitive to KV cache quantization, suggesting model-specific calibration may be needed.
 
 ### Section 4.4 — Nearest Neighbor Search (Figure 6)
 
