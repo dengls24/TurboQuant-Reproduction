@@ -195,9 +195,10 @@ def main():
 
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_NAME,
-            dtype=torch.float16,
+            torch_dtype=torch.float16,
             device_map='auto',
             trust_remote_code=True,
+            attn_implementation='eager',
         )
 
         if eff_bits is not None:
