@@ -2,10 +2,13 @@
 Experiment 4.2 (Extended): Multi-GPU Long-Context NIAH with Llama-3.1-8B-Instruct.
 
 Tests KV cache quantization fidelity at context lengths from 4K to 128K tokens,
-matching the full range in the TurboQuant paper (arXiv:2504.19874, Figure 4).
+comparing Full Precision vs TurboQuant at 4-bit / 3.5-bit / 2.5-bit.
 
 Uses device_map='auto' to distribute model across multiple GPUs.
 Quantizers are created on the correct device per layer.
+
+Hook implementation: patches DynamicCache.update() — compatible with transformers >= 5.0
+(which no longer passes the Cache through attention forward outputs).
 """
 
 import sys, os
@@ -14,7 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import torch
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import gc
 import time
 import json
@@ -24,10 +30,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from turboquant import TurboQuantProd, TurboQuantMSE
 
 # ─── Config ───
-MODEL_PATH = None  # Will be resolved at runtime
 MODEL_CANDIDATES = [
     "/home/xinhuogrp/denglishuo/.cache/modelscope/hub/models/LLM-Research/Meta-Llama-3___1-8B-Instruct",
-    # Fallback: local Gradient model (same architecture, 1M context)
     "/home/xinhuogrp/xushaojie/2_duoattention_orgin/duo-attention/models/Llama-3-8B-Instruct-Gradient-1048k",
 ]
 
@@ -36,7 +40,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # NIAH parameters — full paper range
 TOKEN_LIMITS = [4000, 8000, 16000, 32000, 64000, 128000]
-DEPTH_PERCENTS = list(range(0, 101, 10))  # finer granularity: 0,10,20,...,100
+DEPTH_PERCENTS = list(range(0, 101, 10))  # 0,10,20,...,100 (11 depths)
 
 NEEDLE = "The best thing to do in San Francisco is eat a sandwich and sit in Dolores Park on a sunny day."
 NEEDLE_QUESTION = "What is the best thing to do in San Francisco?"
@@ -63,11 +67,11 @@ HAYSTACK_FILLER = (
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Device-aware KV Cache Quantization (multi-GPU compatible)
+# KV Cache Quantization — DynamicCache.update hook (transformers >= 5.0)
 # ═══════════════════════════════════════════════════════════════════════
 
 class TurboQuantKVCacheLocal:
-    """KV cache quantizer that lives on a specific device."""
+    """KV cache quantizer on a fixed device, with lazy device migration."""
 
     def __init__(self, head_dim, n_outlier_channels, outlier_bits, regular_bits,
                  device, seed=42, quantizer_type='prod'):
@@ -89,6 +93,16 @@ class TurboQuantKVCacheLocal:
                 n_regular, regular_bits, device=device, seed=seed + 1)
         else:
             self.regular_quantizer = None
+
+    def move_to(self, device):
+        """Lazily migrate all quantizer tensors to target device."""
+        if self.device == device:
+            return
+        self.device = device
+        for q in [self.outlier_quantizer, self.regular_quantizer]:
+            if q is None:
+                continue
+            _move_quantizer(q, device)
 
     def quantize_dequantize(self, kv):
         orig_shape = kv.shape
@@ -113,11 +127,40 @@ class TurboQuantKVCacheLocal:
         return result.reshape(orig_shape).to(kv.dtype)
 
 
+def _move_quantizer(q, device):
+    """Move all tensor attributes of a TurboQuant quantizer to device."""
+    for attr in ['Pi', 'centroids']:
+        if hasattr(q, attr):
+            setattr(q, attr, getattr(q, attr).to(device))
+    if hasattr(q, 'device'):
+        q.device = device
+    if hasattr(q, 'qjl') and q.qjl is not None:
+        if hasattr(q.qjl, 'S'):
+            q.qjl.S = q.qjl.S.to(device)
+        q.qjl.device = device
+    if hasattr(q, 'mse_quantizer') and q.mse_quantizer is not None:
+        _move_quantizer(q.mse_quantizer, device)
+
+
+def _remove_dynamic_cache_patch():
+    """Restore original DynamicCache.update."""
+    try:
+        from transformers.cache_utils import DynamicCache
+        if hasattr(DynamicCache, '_tq_original_update'):
+            DynamicCache.update = DynamicCache._tq_original_update
+            del DynamicCache._tq_original_update
+    except Exception:
+        pass
+
+
 def apply_turboquant_multigpu(model, effective_bits=3.5, n_outlier_channels=32,
                                quantizer_type='prod', seed=42):
     """
-    Apply TurboQuant KV cache quantization, creating quantizers on each layer's
-    actual device. Works with device_map='auto' across multiple GPUs.
+    Apply TurboQuant KV cache quantization via DynamicCache.update patch.
+
+    Compatible with transformers >= 5.0 where attention forward no longer
+    returns the Cache object. Quantizers are created on each layer's actual
+    device to support device_map='auto' multi-GPU setups.
     """
     config = model.config
     head_dim = getattr(config, 'head_dim', config.hidden_size // config.num_attention_heads)
@@ -141,44 +184,50 @@ def apply_turboquant_multigpu(model, effective_bits=3.5, n_outlier_channels=32,
           f"regular={n_regular}ch@{regular_bits}bit, "
           f"effective={effective_bits:.1f}bit")
 
-    # Patch each layer, detecting its actual device
+    # Build per-layer quantizers on each layer's actual device
+    kv_quantizers = {}
     for layer_idx, layer in enumerate(model.model.layers):
         attn = layer.self_attn
-        # Detect device from layer parameters
         layer_device = next(attn.parameters()).device
 
-        # Create quantizers on the correct device
-        k_quantizer = TurboQuantKVCacheLocal(
+        kv_quantizers[(layer_idx, 'k')] = TurboQuantKVCacheLocal(
             head_dim, n_outlier_channels, outlier_bits, regular_bits,
-            device=layer_device, seed=seed + layer_idx * 2, quantizer_type=quantizer_type)
-        v_quantizer = TurboQuantKVCacheLocal(
+            device=layer_device, seed=seed + layer_idx * 2,
+            quantizer_type=quantizer_type)
+        kv_quantizers[(layer_idx, 'v')] = TurboQuantKVCacheLocal(
             head_dim, n_outlier_channels, outlier_bits, regular_bits,
-            device=layer_device, seed=seed + layer_idx * 2 + 1, quantizer_type=quantizer_type)
+            device=layer_device, seed=seed + layer_idx * 2 + 1,
+            quantizer_type=quantizer_type)
 
-        # Patch forward
-        original_forward = attn.forward
+    # Patch DynamicCache.update — restoring original first to avoid double-patch
+    try:
+        from transformers.cache_utils import DynamicCache
 
-        def make_quantized_forward(orig_fwd, k_q, v_q, l_idx):
-            def quantized_forward(*args, **kwargs):
-                outputs = orig_fwd(*args, **kwargs)
-                if isinstance(outputs, tuple) and len(outputs) >= 3:
-                    attn_output, attn_weights, past_kv = outputs[0], outputs[1], outputs[2]
-                    if past_kv is not None and hasattr(past_kv, 'key_cache'):
-                        if l_idx < len(past_kv.key_cache):
-                            k = past_kv.key_cache[l_idx]
-                            v = past_kv.value_cache[l_idx]
-                            batch, n_heads, seq_len, hd = k.shape
-                            past_kv.key_cache[l_idx] = k_q.quantize_dequantize(
-                                k.reshape(-1, hd)).reshape(k.shape)
-                            past_kv.value_cache[l_idx] = v_q.quantize_dequantize(
-                                v.reshape(-1, hd)).reshape(v.shape)
-                        outputs = (attn_output, attn_weights, past_kv)
-                return outputs
-            return quantized_forward
+        if hasattr(DynamicCache, '_tq_original_update'):
+            original_update = DynamicCache._tq_original_update
+        else:
+            original_update = DynamicCache.update
+            DynamicCache._tq_original_update = original_update
 
-        attn.forward = make_quantized_forward(original_forward, k_quantizer, v_quantizer, layer_idx)
+        def quantized_update(self, key_states, value_states, layer_idx, *args, **kwargs):
+            if (layer_idx, 'k') in kv_quantizers:
+                k_q = kv_quantizers[(layer_idx, 'k')]
+                v_q = kv_quantizers[(layer_idx, 'v')]
+                dev = key_states.device
+                k_q.move_to(dev)
+                v_q.move_to(dev)
+                orig_k = key_states.shape
+                orig_v = value_states.shape
+                key_states   = k_q.quantize_dequantize(key_states.reshape(-1, orig_k[-1])).reshape(orig_k)
+                value_states = v_q.quantize_dequantize(value_states.reshape(-1, orig_v[-1])).reshape(orig_v)
+            return original_update(self, key_states, value_states, layer_idx, *args, **kwargs)
 
-    print(f"  Patched {n_layers} layers across devices")
+        DynamicCache.update = quantized_update
+        print(f"  Patched DynamicCache.update for {n_layers} layers")
+
+    except Exception as e:
+        print(f"  WARNING: DynamicCache patch failed ({e})")
+
     return model
 
 
@@ -191,7 +240,6 @@ def build_prompt_llama(tokenizer, target_tokens, depth_percent):
     filler_tokens = tokenizer.encode(HAYSTACK_FILLER, add_special_tokens=False)
     needle_tokens = tokenizer.encode(NEEDLE, add_special_tokens=False)
 
-    # Reserve for needle + question + chat template overhead
     available_tokens = target_tokens - len(needle_tokens) - 200
 
     n_repeats = (available_tokens // len(filler_tokens)) + 1
@@ -223,7 +271,6 @@ def run_single_niah(model, tokenizer, token_limit, depth_percent, max_new_tokens
     prompt = build_prompt_llama(tokenizer, token_limit, depth_percent)
 
     inputs = tokenizer(prompt, return_tensors='pt', truncation=True, max_length=token_limit)
-    # For multi-GPU: move to the device of the first embedding layer
     input_device = model.model.embed_tokens.weight.device
     input_ids = inputs['input_ids'].to(input_device)
     attention_mask = inputs['attention_mask'].to(input_device)
@@ -239,49 +286,153 @@ def run_single_niah(model, tokenizer, token_limit, depth_percent, max_new_tokens
         )
 
     response = tokenizer.decode(outputs[0][actual_len:], skip_special_tokens=True)
-    # Strip any thinking tags (Qwen3 compat, shouldn't appear for Llama)
     response = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL).strip()
     score = evaluate_response(response)
 
     return score, response, actual_len
 
 
-def plot_niah_heatmap(results, title, output_path, overall_score=None):
-    """Plot NIAH heatmap."""
-    token_limits = sorted(set(r[0] for r in results))
-    depths = sorted(set(r[1] for r in results))
+def run_niah_config(model_path, tokenizer, effective_bits, config_label):
+    """Load model, optionally apply TurboQuant, run full NIAH grid, return results."""
+    print(f"\n{'=' * 60}")
+    print(f"Config: {config_label}")
+    print(f"{'=' * 60}")
 
-    score_matrix = np.zeros((len(depths), len(token_limits)))
-    for tl, dp, score in results:
-        i = depths.index(dp)
-        j = token_limits.index(tl)
-        score_matrix[i, j] = score
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.bfloat16,
+        device_map='auto',
+        trust_remote_code=True,
+        attn_implementation='sdpa',  # sdpa (flash attn) passes through DynamicCache.update
+    )
+    model.eval()
 
-    fig, ax = plt.subplots(figsize=(12, 8))
-    im = ax.imshow(score_matrix, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
+    if hasattr(model, 'hf_device_map'):
+        devices_used = set(str(v) for v in model.hf_device_map.values())
+        print(f"  Devices: {devices_used}")
 
-    token_labels = [f"{t//1000}K" for t in token_limits]
-    ax.set_xticks(range(len(token_limits)))
-    ax.set_xticklabels(token_labels, rotation=45, ha='right')
-    ax.set_yticks(range(len(depths)))
-    ax.set_yticklabels([f"{d}%" for d in depths])
-    ax.set_xlabel("Context Length (tokens)", fontsize=12)
-    ax.set_ylabel("Needle Depth", fontsize=12)
+    if effective_bits is not None:
+        model = apply_turboquant_multigpu(
+            model,
+            effective_bits=effective_bits,
+            n_outlier_channels=32,
+            quantizer_type='prod',
+            seed=42,
+        )
 
-    # Annotate cells with scores
-    for i in range(len(depths)):
-        for j in range(len(token_limits)):
-            val = score_matrix[i, j]
-            color = 'white' if val < 0.5 else 'black'
-            ax.text(j, i, f"{val:.1f}", ha='center', va='center', fontsize=7, color=color)
+    results = []
+    for tl in TOKEN_LIMITS:
+        print(f"\n  --- Context: {tl//1000}K tokens ---")
+        for dp in DEPTH_PERCENTS:
+            t0 = time.time()
+            try:
+                score, response, actual_len = run_single_niah(model, tokenizer, tl, dp)
+                elapsed = time.time() - t0
+                results.append((tl, dp, score))
+                print(f"    depth={dp:3d}%, score={score:.2f}, len={actual_len}, "
+                      f"time={elapsed:.1f}s | {response[:80]}")
+            except torch.cuda.OutOfMemoryError:
+                print(f"    depth={dp:3d}% — OOM at {tl//1000}K tokens, skipping")
+                results.append((tl, dp, -1))
+                torch.cuda.empty_cache()
+            except Exception as e:
+                print(f"    depth={dp:3d}% — ERROR: {e}")
+                results.append((tl, dp, 0.0))
+            torch.cuda.empty_cache()
 
-    score_str = f"\nAvg Score: {overall_score:.3f}" if overall_score is not None else ""
-    ax.set_title(f"{title}{score_str}", fontsize=14)
-    plt.colorbar(im, ax=ax, label='Score')
-    plt.tight_layout()
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+        tl_results = [r for r in results if r[0] == tl]
+        if all(r[2] == -1 for r in tl_results):
+            print(f"  All OOM at {tl//1000}K, stopping")
+            break
+
+    # Cleanup
+    del model
+    _remove_dynamic_cache_patch()
+    torch.cuda.empty_cache()
+    gc.collect()
+    time.sleep(2)
+
+    valid = [(tl, dp, s) for tl, dp, s in results if s >= 0]
+    avg_score = float(np.mean([s for _, _, s in valid])) if valid else 0.0
+    print(f"  Average score: {avg_score:.4f}")
+    return results, avg_score
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Figure rendering — academic style
+# ═══════════════════════════════════════════════════════════════════════
+
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.serif': ['Times New Roman', 'DejaVu Serif', 'serif'],
+    'font.size': 10,
+    'axes.titlesize': 10,
+    'axes.labelsize': 9,
+    'xtick.labelsize': 8,
+    'ytick.labelsize': 8,
+    'figure.dpi': 300,
+    'savefig.dpi': 300,
+    'savefig.bbox': 'tight',
+})
+
+
+def render_niah_comparison(all_configs, output_path):
+    """
+    Render side-by-side NIAH heatmaps for multiple configurations.
+    all_configs: list of (label, results, avg_score)
+    """
+    n = len(all_configs)
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        'niah', ['#FDECEC', '#FDD49E', '#ADDD8E', '#31A354', '#006837'])
+
+    fig, axes = plt.subplots(1, n, figsize=(3.5 * n, 4.0), sharey=True)
+    if n == 1:
+        axes = [axes]
+
+    all_tls = sorted(set(r[0] for cfg in all_configs for r in cfg[1] if r[2] >= 0))
+    all_dps = sorted(set(r[1] for cfg in all_configs for r in cfg[1]))
+
+    token_limits = TOKEN_LIMITS
+    depths = DEPTH_PERCENTS
+    token_labels = [f'{t//1000}K' for t in token_limits]
+
+    for ax, (label, results, avg_score) in zip(axes, all_configs):
+        matrix = np.zeros((len(depths), len(token_limits)))
+        for tl, dp, s in results:
+            if tl in token_limits and dp in depths:
+                i = depths.index(dp)
+                j = token_limits.index(tl)
+                matrix[i, j] = max(0, s)
+
+        im = ax.imshow(matrix, cmap=cmap, aspect='auto', vmin=0, vmax=1,
+                       interpolation='nearest')
+
+        for i in range(len(depths)):
+            for j in range(len(token_limits)):
+                v = matrix[i, j]
+                color = 'white' if v > 0.6 else 'black'
+                ax.text(j, i, f'{v:.1f}', ha='center', va='center',
+                        fontsize=5.5, color=color, fontweight='medium')
+
+        ax.set_xticks(range(len(token_limits)))
+        ax.set_xticklabels(token_labels, fontsize=7.5)
+        ax.set_xlabel('Context Length')
+        if ax == axes[0]:
+            ax.set_yticks(range(len(depths)))
+            ax.set_yticklabels([f'{d}%' for d in depths], fontsize=7.5)
+            ax.set_ylabel('Needle Depth')
+        else:
+            ax.set_yticks([])
+        ax.set_title(f'{label}\nAvg: {avg_score:.3f}', fontsize=9, pad=4)
+
+    plt.subplots_adjust(left=0.06, right=0.88, wspace=0.08)
+    cbar_ax = fig.add_axes([0.90, 0.15, 0.015, 0.7])
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    cbar.set_label('Retrieval Score', fontsize=8)
+
+    fig.savefig(output_path)
     plt.close(fig)
-    print(f"  Saved: {output_path}")
+    print(f"Saved: {output_path}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -289,30 +440,25 @@ def plot_niah_heatmap(results, title, output_path, overall_score=None):
 # ═══════════════════════════════════════════════════════════════════════
 
 def find_model_path():
-    """Find the first available model path."""
-    # Also check modelscope default download locations
     import glob
     ms_patterns = [
         os.path.expanduser("~/.cache/modelscope/hub/LLM-Research/Meta-Llama-3*8B-Instruct*"),
-        os.path.expanduser("~/.cache/modelscope/models/LLM-Research/Meta-Llama-3*8B-Instruct*"),
         "/home/xinhuogrp/denglishuo/.cache/modelscope/**/Meta-Llama-3*8B-Instruct*",
     ]
     for pat in ms_patterns:
-        matches = glob.glob(pat, recursive=True)
-        for m in matches:
+        for m in glob.glob(pat, recursive=True):
             if os.path.isdir(m) and os.path.exists(os.path.join(m, 'config.json')):
                 return m
-
     for path in MODEL_CANDIDATES:
         if os.path.exists(path) and os.path.exists(os.path.join(path, 'config.json')):
             return path
-
     return None
 
 
 def main():
     print("=" * 70)
-    print("Experiment 4.2 (Extended): Multi-GPU Long-Context NIAH")
+    print("Experiment 4.2 (Extended): Multi-bitwidth NIAH Comparison")
+    print("Configs: Full Precision | 4-bit | 3.5-bit | 2.5-bit")
     print("=" * 70)
 
     model_path = find_model_path()
@@ -326,216 +472,113 @@ def main():
             print(f"  Downloaded to: {model_path}")
         except Exception as e:
             print(f"  Download failed: {e}")
-            print("  Falling back to local Gradient model...")
-            model_path = "/home/xinhuogrp/xushaojie/2_duoattention_orgin/duo-attention/models/Llama-3-8B-Instruct-Gradient-1048k"
+            sys.exit(1)
 
-    print(f"\nUsing model: {model_path}")
-
-    # Check available GPUs
+    print(f"Using model: {model_path}")
     n_gpus = torch.cuda.device_count()
     print(f"Available GPUs: {n_gpus}")
     for i in range(n_gpus):
         props = torch.cuda.get_device_properties(i)
-        print(f"  GPU {i}: {props.name}, total={props.total_memory // 1024**3}GB")
-
-    # Select GPUs with most free memory (use nvidia-smi for accurate free mem)
-    print(f"\nLoading model with device_map='auto' across {n_gpus} GPUs...")
+        print(f"  GPU {i}: {props.name}, {props.total_memory // 1024**3}GB")
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # ─── Phase 1: Full Precision ───
-    print("\n" + "=" * 60)
-    print("Phase 1: Full Precision Baseline")
-    print("=" * 60)
+    # Configurations to evaluate
+    configs = [
+        ("Full Precision\n(16-bit)", None),
+        ("TurboQuant\n(4-bit)",      4.0),
+        ("TurboQuant\n(3.5-bit)",    3.5),
+        ("TurboQuant\n(2.5-bit)",    2.5),
+    ]
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map='auto',
-        trust_remote_code=True,
-        attn_implementation='sdpa',  # PyTorch native scaled dot product attention
-    )
-    model.eval()
+    all_results = {}
 
-    # Show device map
-    if hasattr(model, 'hf_device_map'):
-        devices_used = set(str(v) for v in model.hf_device_map.values())
-        print(f"  Model distributed across: {devices_used}")
+    for config_label, effective_bits in configs:
+        clean_label = config_label.replace('\n', ' ')
+        results, avg_score = run_niah_config(
+            model_path, tokenizer, effective_bits, clean_label)
+        all_results[clean_label] = {
+            'effective_bits': effective_bits,
+            'results': results,
+            'score': avg_score,
+        }
 
-    results_fp = []
-    for tl in TOKEN_LIMITS:
-        print(f"\n  --- Context: {tl//1000}K tokens ---")
-        for dp in DEPTH_PERCENTS:
-            t0 = time.time()
-            try:
-                score, response, actual_len = run_single_niah(model, tokenizer, tl, dp)
-                elapsed = time.time() - t0
-                results_fp.append((tl, dp, score))
-                print(f"    depth={dp:3d}%, score={score:.2f}, len={actual_len}, "
-                      f"time={elapsed:.1f}s | {response[:80]}...")
-            except torch.cuda.OutOfMemoryError:
-                print(f"    depth={dp:3d}% — OOM at {tl//1000}K tokens, skipping larger sizes")
-                results_fp.append((tl, dp, -1))  # -1 = OOM
-                torch.cuda.empty_cache()
-            except Exception as e:
-                print(f"    depth={dp:3d}% — ERROR: {e}")
-                results_fp.append((tl, dp, 0.0))
-            torch.cuda.empty_cache()
-
-        # If all depths at this token limit were OOM, skip larger sizes
-        tl_results = [r for r in results_fp if r[0] == tl]
-        if all(r[2] == -1 for r in tl_results):
-            print(f"  All OOM at {tl//1000}K, stopping FP tests at larger sizes")
-            max_fp_tokens = tl
-            break
-
-    # Filter out OOM results for scoring
-    valid_fp = [(tl, dp, s) for tl, dp, s in results_fp if s >= 0]
-    overall_fp = np.mean([r[2] for r in valid_fp]) if valid_fp else 0.0
-
-    plot_niah_heatmap(
-        [(tl, dp, max(0, s)) for tl, dp, s in results_fp],
-        f"Full-Precision ({os.path.basename(model_path)})",
-        os.path.join(OUTPUT_DIR, 'niah_llama_full_precision.png'),
-        overall_fp)
-
-    # ─── Phase 2: TurboQuant 3.5-bit ───
-    print("\n" + "=" * 60)
-    print("Phase 2: TurboQuant 3.5-bit KV Cache")
-    print("=" * 60)
-
-    # Reload model fresh
-    del model
-    torch.cuda.empty_cache()
-    gc.collect()
-    time.sleep(2)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map='auto',
-        trust_remote_code=True,
-        attn_implementation='sdpa',
-    )
-    model.eval()
-
-    # Apply device-aware TurboQuant
-    model = apply_turboquant_multigpu(
-        model,
-        effective_bits=3.5,
-        n_outlier_channels=32,
-        quantizer_type='prod',
-        seed=42,
-    )
-
-    results_tq = []
-    for tl in TOKEN_LIMITS:
-        print(f"\n  --- Context: {tl//1000}K tokens ---")
-        for dp in DEPTH_PERCENTS:
-            t0 = time.time()
-            try:
-                score, response, actual_len = run_single_niah(model, tokenizer, tl, dp)
-                elapsed = time.time() - t0
-                results_tq.append((tl, dp, score))
-                print(f"    depth={dp:3d}%, score={score:.2f}, len={actual_len}, "
-                      f"time={elapsed:.1f}s | {response[:80]}...")
-            except torch.cuda.OutOfMemoryError:
-                print(f"    depth={dp:3d}% — OOM at {tl//1000}K tokens")
-                results_tq.append((tl, dp, -1))
-                torch.cuda.empty_cache()
-            except Exception as e:
-                print(f"    depth={dp:3d}% — ERROR: {e}")
-                results_tq.append((tl, dp, 0.0))
-            torch.cuda.empty_cache()
-
-        tl_results = [r for r in results_tq if r[0] == tl]
-        if all(r[2] == -1 for r in tl_results):
-            print(f"  All OOM at {tl//1000}K, stopping TQ tests at larger sizes")
-            break
-
-    valid_tq = [(tl, dp, s) for tl, dp, s in results_tq if s >= 0]
-    overall_tq = np.mean([r[2] for r in valid_tq]) if valid_tq else 0.0
-
-    plot_niah_heatmap(
-        [(tl, dp, max(0, s)) for tl, dp, s in results_tq],
-        f"TurboQuant 3.5-bit ({os.path.basename(model_path)})",
-        os.path.join(OUTPUT_DIR, 'niah_llama_turboquant.png'),
-        overall_tq)
-
-    # ─── Combined Figure ───
-    print("\n" + "=" * 60)
-    print("Generating combined Figure 4 (Extended)")
-    print("=" * 60)
-
-    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
-
-    for ax, (results, label, score) in zip(axes, [
-        (results_fp, "Full-Precision", overall_fp),
-        (results_tq, "TurboQuant 3.5-bit", overall_tq),
-    ]):
-        token_limits = sorted(set(r[0] for r in results))
-        depths = sorted(set(r[1] for r in results))
-        score_matrix = np.full((len(depths), len(token_limits)), np.nan)
-        for tl, dp, s in results:
-            i = depths.index(dp)
-            j = token_limits.index(tl)
-            score_matrix[i, j] = max(0, s)
-
-        im = ax.imshow(score_matrix, cmap='RdYlGn', aspect='auto', vmin=0, vmax=1)
-        ax.set_xticks(range(len(token_limits)))
-        ax.set_xticklabels([f"{t//1000}K" for t in token_limits], rotation=45, ha='right')
-        ax.set_yticks(range(len(depths)))
-        ax.set_yticklabels([f"{d}%" for d in depths])
-        ax.set_xlabel("Context Length (tokens)")
-        ax.set_ylabel("Needle Depth")
-        ax.set_title(f"{label}\nAvg Score: {score:.3f}", fontsize=13)
-
-        for i in range(len(depths)):
-            for j in range(len(token_limits)):
-                val = score_matrix[i, j]
-                if not np.isnan(val):
-                    color = 'white' if val < 0.5 else 'black'
-                    ax.text(j, i, f"{val:.1f}", ha='center', va='center', fontsize=6, color=color)
-
-    plt.colorbar(im, ax=axes, shrink=0.8, label='Score')
-    plt.tight_layout()
-    fig_path = os.path.join(OUTPUT_DIR, 'figure4_niah_extended.png')
-    fig.savefig(fig_path, dpi=150, bbox_inches='tight')
-    print(f"Combined figure saved to: {fig_path}")
-
-    # ─── Save results ───
-    results_json = {
+    # ─── Save raw results ───
+    serializable = {}
+    for label, data in all_results.items():
+        serializable[label] = {
+            'effective_bits': data['effective_bits'],
+            'score': data['score'],
+            'results': [[int(tl), int(dp), float(s)] for tl, dp, s in data['results']],
+        }
+    # Also write niah_llama_results.json in the format render_figures.py expects
+    token_limits = TOKEN_LIMITS
+    depth_percents = DEPTH_PERCENTS
+    fp_data = all_results.get('Full Precision (16-bit)', {})
+    tq35_data = all_results.get('TurboQuant (3.5-bit)', {})
+    legacy_json = {
         'model': model_path,
-        'token_limits': TOKEN_LIMITS,
-        'depth_percents': DEPTH_PERCENTS,
-        'full_precision': {'results': results_fp, 'score': float(overall_fp)},
-        'turboquant_3.5bit': {'results': results_tq, 'score': float(overall_tq)},
+        'token_limits': token_limits,
+        'depth_percents': depth_percents,
+        'full_precision': {
+            'results': [[int(tl), int(dp), float(s)] for tl, dp, s in fp_data.get('results', [])],
+            'score': fp_data.get('score', 0.0),
+        },
+        'turboquant_3.5bit': {
+            'results': [[int(tl), int(dp), float(s)] for tl, dp, s in tq35_data.get('results', [])],
+            'score': tq35_data.get('score', 0.0),
+        },
     }
-    json_path = os.path.join(OUTPUT_DIR, 'niah_llama_results.json')
-    with open(json_path, 'w') as f:
-        json.dump(results_json, f, indent=2)
-    print(f"Results saved to: {json_path}")
+    with open(os.path.join(OUTPUT_DIR, 'niah_llama_results.json'), 'w') as f:
+        json.dump(legacy_json, f, indent=2)
 
-    # ─── Summary ───
-    print("\n" + "=" * 60)
+    extended_json = {
+        'model': model_path,
+        'token_limits': token_limits,
+        'depth_percents': depth_percents,
+        'configs': serializable,
+    }
+    with open(os.path.join(OUTPUT_DIR, 'niah_extended_results.json'), 'w') as f:
+        json.dump(extended_json, f, indent=2)
+    print(f"\nResults saved to {OUTPUT_DIR}/niah_extended_results.json")
+
+    # ─── Render figures ───
+    # Figure 4a: Full Precision vs TurboQuant 3.5-bit (paper comparison)
+    configs_2 = [
+        ('Full Precision (16-bit)', all_results['Full Precision (16-bit)']['results'],
+         all_results['Full Precision (16-bit)']['score']),
+        ('TurboQuant (3.5-bit)', all_results['TurboQuant (3.5-bit)']['results'],
+         all_results['TurboQuant (3.5-bit)']['score']),
+    ]
+    render_niah_comparison(configs_2,
+                           os.path.join(OUTPUT_DIR, 'fig4_niah.png'))
+
+    # Figure 4b: All 4 configs
+    configs_4 = [
+        (lbl.replace('\n', ' '), all_results[lbl.replace('\n', ' ')]['results'],
+         all_results[lbl.replace('\n', ' ')]['score'])
+        for lbl, _ in configs
+    ]
+    render_niah_comparison(configs_4,
+                           os.path.join(OUTPUT_DIR, 'fig4_niah_multibit.png'))
+
+    # ─── Summary table ───
+    print("\n" + "=" * 70)
     print("SUMMARY")
-    print("=" * 60)
-    print(f"  Full Precision Score:      {overall_fp:.4f}")
-    print(f"  TurboQuant 3.5-bit Score:  {overall_tq:.4f}")
-    print(f"  Difference:                {abs(overall_fp - overall_tq):.4f}")
-
-    # Per-token-limit comparison
-    print(f"\n  {'Tokens':>8} | {'FP Score':>10} | {'TQ Score':>10} | {'Diff':>8}")
-    print("  " + "-" * 45)
-    for tl in TOKEN_LIMITS:
-        fp_scores = [s for t, d, s in valid_fp if t == tl]
-        tq_scores = [s for t, d, s in valid_tq if t == tl]
-        fp_avg = np.mean(fp_scores) if fp_scores else float('nan')
-        tq_avg = np.mean(tq_scores) if tq_scores else float('nan')
-        diff = abs(fp_avg - tq_avg) if not (np.isnan(fp_avg) or np.isnan(tq_avg)) else float('nan')
-        print(f"  {tl:8d} | {fp_avg:10.4f} | {tq_avg:10.4f} | {diff:8.4f}")
+    print("=" * 70)
+    header = f"{'Config':<30} | {'Avg':>6} | " + " | ".join(f"{t//1000}K" for t in TOKEN_LIMITS)
+    print(header)
+    print("-" * len(header))
+    for label, data in all_results.items():
+        valid = [(tl, dp, s) for tl, dp, s in data['results'] if s >= 0]
+        per_tl = []
+        for tl in TOKEN_LIMITS:
+            scores = [s for t, d, s in valid if t == tl]
+            per_tl.append(f"{np.mean(scores):5.3f}" if scores else "  N/A")
+        row = f"{label:<30} | {data['score']:6.3f} | " + " | ".join(per_tl)
+        print(row)
 
     print("\nDone!")
 
