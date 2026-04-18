@@ -76,10 +76,10 @@ Tested on **Qwen3-8B** across 4 configurations. Key finding: **4-bit quantizatio
 
 | Configuration | ShortQA F1 | LongQA F1 | Average |
 |---|---|---|---|
-| Full Cache (16-bit) | 46.4 | 45.4 | 45.9 |
-| TurboQuant (4-bit) | **49.4** | 3.0 | 26.2 |
-| TurboQuant (3.5-bit) | 0.3 | 1.8 | 1.0 |
-| TurboQuant (2.5-bit) | 0.0 | 1.7 | 0.8 |
+| Full Cache (16-bit) | 55.7 | 42.7 | 49.2 |
+| TurboQuant (4-bit) | **63.2** | 10.3 | 36.7 |
+| TurboQuant (3.5-bit) | 23.8 | 1.6 | 12.7 |
+| TurboQuant (2.5-bit) | 0.9 | 5.1 | 3.0 |
 
 > **Note:** The original paper evaluates on Llama-3.1-8B-Instruct where TurboQuant 3.5-bit preserves quality. Qwen3-8B appears more sensitive to KV cache quantization, suggesting model-specific calibration may be needed.
 

@@ -184,9 +184,9 @@ def render_figure5_longbench():
         bars = ax.bar(x + offsets[i], vals, width, label=label, color=color,
                       alpha=0.85, edgecolor='white', linewidth=0.5)
         for bar, v in zip(bars, vals):
-            if v > 1.0:
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                        f'{v:.1f}', ha='center', va='bottom', fontsize=6.5)
+            if v > 2.0:
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.8,
+                        f'{v:.1f}', ha='center', va='bottom', fontsize=6.5, fontweight='bold')
 
     ax.set_xticks(x)
     ax.set_xticklabels(categories)
@@ -194,7 +194,7 @@ def render_figure5_longbench():
     ax.set_title('Generation Quality on Qwen3-8B (LongBench)', fontsize=11)
     ax.set_ylim(0, 65)
     ax.legend(frameon=True, fancybox=False, edgecolor='#CCCCCC', fontsize=7.5,
-              ncol=2, loc='upper right')
+              ncol=4, loc='upper center', bbox_to_anchor=(0.5, -0.13))
     ax.grid(axis='y', alpha=0.3)
 
     # Annotate finding

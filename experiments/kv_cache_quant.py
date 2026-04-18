@@ -237,6 +237,20 @@ def apply_turboquant_to_kv_cache(
     return model
 
 
+def remove_turboquant_from_kv_cache():
+    """
+    Remove TurboQuant quantization by restoring the original DynamicCache.update.
+    Must be called between experiments when reusing the same process.
+    """
+    try:
+        from transformers.cache_utils import DynamicCache
+        if hasattr(DynamicCache, '_tq_original_update'):
+            DynamicCache.update = DynamicCache._tq_original_update
+            del DynamicCache._tq_original_update
+    except Exception:
+        pass
+
+
 def _patch_attention_layers(model, kv_quantizers):
     """
     Patch the model's KV cache update method to quantize key/value states
@@ -260,19 +274,22 @@ def _patch_attention_layers(model, kv_quantizers):
 def _patch_dynamic_cache(DynamicCache, kv_quantizers):
     """
     Patch DynamicCache.update to quantize KV states on write.
-    This is the correct hook point for transformers >= 5.0.
+    Restores the original method first to avoid double-patching across configs.
     """
-    original_update = DynamicCache.update
+    # Restore original if previously patched
+    if hasattr(DynamicCache, '_tq_original_update'):
+        original_update = DynamicCache._tq_original_update
+    else:
+        original_update = DynamicCache.update
+        DynamicCache._tq_original_update = original_update
 
     def quantized_update(self, key_states, value_states, layer_idx, *args, **kwargs):
         if (layer_idx, 'k') in kv_quantizers:
             k_q = kv_quantizers[(layer_idx, 'k')]
             v_q = kv_quantizers[(layer_idx, 'v')]
-            # Move quantizer codebooks to match key_states device on first use
             dev = key_states.device
             k_q.move_to(dev)
             v_q.move_to(dev)
-            # key_states shape: (batch, n_heads, seq_len, head_dim)
             orig_k_shape = key_states.shape
             orig_v_shape = value_states.shape
             key_states   = k_q.quantize_dequantize(key_states.reshape(-1, orig_k_shape[-1])).reshape(orig_k_shape)

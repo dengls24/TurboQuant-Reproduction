@@ -20,7 +20,7 @@ import re
 import string
 from collections import Counter
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from kv_cache_quant import apply_turboquant_to_kv_cache
+from kv_cache_quant import apply_turboquant_to_kv_cache, remove_turboquant_from_kv_cache
 
 # ─── Config ───
 MODEL_NAME = "Qwen/Qwen3-8B"
@@ -28,7 +28,7 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MAX_NEW_TOKENS = 512  # enough room for Qwen3 thinking + answer
+MAX_NEW_TOKENS = 256  # Qwen3 non-thinking mode: answer is direct, no chain of thought
 
 
 # ─── Test data: representative tasks ───
@@ -136,6 +136,7 @@ def evaluate_qa(model, tokenizer, tasks, task_name="QA"):
     scores = []
     for i, task in enumerate(tasks):
         prompt = (
+            f"<|im_start|>system\nYou are a helpful assistant. /no_think\n<|im_end|>\n"
             f"<|im_start|>user\n"
             f"Answer the question based on the context. Be concise.\n\n"
             f"Context: {task['context']}\n\n"
@@ -231,6 +232,7 @@ def main():
         del model
         torch.cuda.empty_cache()
         gc.collect()
+        remove_turboquant_from_kv_cache()  # restore DynamicCache.update before next config
 
     # ─── Print Table ───
     print("\n" + "=" * 70)
