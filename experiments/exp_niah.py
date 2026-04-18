@@ -256,6 +256,7 @@ def main():
                 torch_dtype=torch.float16,
                 device_map='auto',
                 trust_remote_code=True,
+                attn_implementation='eager',  # avoid fused kernels bypassing quant hooks
             )
             break
         except:

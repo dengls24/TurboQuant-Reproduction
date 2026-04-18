@@ -230,36 +230,42 @@ def _patch_single_attention(attn_module, layer_idx, kv_quantizers):
     original_forward = attn_module.forward
 
     def quantized_forward(*args, **kwargs):
+        # Force eager attention to avoid fused kernels bypassing Python hooks
+        if 'attn_implementation' not in kwargs:
+            pass  # attn_implementation is set at model level, not per-call
+
         outputs = original_forward(*args, **kwargs)
 
-        # outputs is typically (attn_output, attn_weights, past_key_value)
-        # or just attn_output if not returning cache
-        if isinstance(outputs, tuple) and len(outputs) >= 3:
-            attn_output, attn_weights, past_kv = outputs[0], outputs[1], outputs[2]
-            if past_kv is not None:
-                # past_kv is a tuple (key_states, value_states) or a Cache object
-                if hasattr(past_kv, 'key_cache') and hasattr(past_kv, 'value_cache'):
-                    # DynamicCache or similar
-                    if layer_idx < len(past_kv.key_cache):
-                        k = past_kv.key_cache[layer_idx]
-                        v = past_kv.value_cache[layer_idx]
+        # Find the Cache object in the outputs tuple.
+        # Different HF versions return different tuple lengths:
+        #   - (attn_output, attn_weights, past_kv)  — len 3
+        #   - (attn_output, past_kv)                 — len 2 (when output_attentions=False)
+        if isinstance(outputs, tuple):
+            past_kv = None
+            past_kv_idx = None
+            for i, item in enumerate(outputs):
+                if hasattr(item, 'key_cache') and hasattr(item, 'value_cache'):
+                    past_kv = item
+                    past_kv_idx = i
+                    break
 
-                        k_q = kv_quantizers[(layer_idx, 'k')]
-                        v_q = kv_quantizers[(layer_idx, 'v')]
+            if past_kv is not None and layer_idx < len(past_kv.key_cache):
+                k = past_kv.key_cache[layer_idx]
+                v = past_kv.value_cache[layer_idx]
 
-                        # Quantize each head separately
-                        # k shape: (batch, n_kv_heads, seq_len, head_dim)
-                        batch, n_heads, seq_len, head_dim = k.shape
-                        k_flat = k.reshape(-1, head_dim)
-                        v_flat = v.reshape(-1, head_dim)
+                k_q = kv_quantizers[(layer_idx, 'k')]
+                v_q = kv_quantizers[(layer_idx, 'v')]
 
-                        k_hat = k_q.quantize_dequantize(k_flat).reshape(k.shape)
-                        v_hat = v_q.quantize_dequantize(v_flat).reshape(v.shape)
+                # k shape: (batch, n_kv_heads, seq_len, head_dim)
+                batch, n_heads, seq_len, head_dim = k.shape
+                k_flat = k.reshape(-1, head_dim)
+                v_flat = v.reshape(-1, head_dim)
 
-                        past_kv.key_cache[layer_idx] = k_hat
-                        past_kv.value_cache[layer_idx] = v_hat
+                k_hat = k_q.quantize_dequantize(k_flat).reshape(k.shape)
+                v_hat = v_q.quantize_dequantize(v_flat).reshape(v.shape)
 
-                    outputs = (attn_output, attn_weights, past_kv)
+                past_kv.key_cache[layer_idx] = k_hat
+                past_kv.value_cache[layer_idx] = v_hat
 
         return outputs
 
