@@ -1,0 +1,309 @@
+{
+  "source_relative_to_home": "0-LLM/5-TurboQuant",
+  "source_files": [
+    {
+      "path": "turboquant.py",
+      "bytes": 19131,
+      "sha256": "cf1b0579625668af1720bf348c9c455b1f75a4e9b1210c23d85058eec5a1c5ab",
+      "mode": "100644"
+    },
+    {
+      "path": "README.md",
+      "bytes": 20681,
+      "sha256": "ef97913a524e524bb65ed60232da29ed5c245b736a0201463e92559aec06559c",
+      "mode": "100644"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 99,
+      "sha256": "f3050bf362ca9ffcab9f288e283b421b7a2621698eed9c79bcdac3519840261c",
+      "mode": "100644"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 281,
+      "sha256": "84e828c0166c9d2d19f86a4e33f89a01e0b59a273c113edbc340c8a2f9d3f54a",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_niah.py",
+      "bytes": 13411,
+      "sha256": "330d2b29311d68384d27528e9657f3475cfafd086a6db2cc8c24cc377946e461",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_figure2_ip_vs_avgip.py",
+      "bytes": 6075,
+      "sha256": "743110a4f904572169cbaf576eefd67c2161f9df9a9d0bc726776071ce21e8d0",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_longbench.py",
+      "bytes": 10401,
+      "sha256": "943ae504e96deb8f4774597b802e37ed3fd90cd52928cd77adf54201dda10402",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/render_figures.py",
+      "bytes": 9833,
+      "sha256": "cd6fddaeec438b325fa745dc105c220a54d32e5520d6bb592fe3a10606cd213f",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_niah_multigpu.py",
+      "bytes": 24986,
+      "sha256": "cbd4909bda10d9df2bdea6db98a15f95ec30bf0be13413924cc732fbd30518cc",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/kv_cache_quant.py",
+      "bytes": 14014,
+      "sha256": "fa7145ba30d0d2ef900e939acf66841fd7cea150dd308a2db9a1387ebea4c7bc",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_empirical_validation.py",
+      "bytes": 9479,
+      "sha256": "9ba929acc95cda9798a05b8edccf3f3e3a238d7bb9d2a172d6f5216ed017c2f7",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/exp_nn_search.py",
+      "bytes": 9166,
+      "sha256": "dbf3a8e315c5745fe785b7e259cb44a1bb6ab30aae3d2c41d5a7839342a8e8f2",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/实验报告.md",
+      "bytes": 33417,
+      "sha256": "f15b49b19315908c6d995928aab973bd4124253fea87eac3d1aa9ccc3b4e9a63",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/fig4_niah.png",
+      "bytes": 121046,
+      "sha256": "5800e4ab3684fe701c9586b25cb1036f8bb9ddcf192757f23c94e4ae91c712b6",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/fig5_longbench.png",
+      "bytes": 118627,
+      "sha256": "ba1555f1848812801c45f55e014b99890bbf786f7e01f4a8231669236b7fdf05",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/fig6_nn_recall.png",
+      "bytes": 171890,
+      "sha256": "3ce67cfacf66e9e3ed80446157cfc69204faeb9b13188aec345fcf7aba518c8c",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/fig3_distortion.png",
+      "bytes": 216976,
+      "sha256": "a7e64843c08b6a0624c849a53728f650d50ed5e208d14ad02582a9a6be6adcdd",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_extended_results.json",
+      "bytes": 18383,
+      "sha256": "50893dd882d2b8e41e6835ca8662183821f5becab41ceabedfb0acf69e1bec81",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure_nn_recall.png",
+      "bytes": 132684,
+      "sha256": "ea549df1186a1e4079567ad802f7cb21ed6f74e73210e674c3f6547a8ffe24b7",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/longbench_results.json",
+      "bytes": 536,
+      "sha256": "afafb81a8f814abbe21a2ca59504a6c536eee542f11e4ff7b3f09b37d59c7f97",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/fig4_niah_multibit.png",
+      "bytes": 151052,
+      "sha256": "614ffb8c754c8bb65208018c749e903249a173d7cbfb7afee4a481864a8bef45",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_full_precision.png",
+      "bytes": 46636,
+      "sha256": "fd147b313636d2dd7c18a517a8995355be0773178b033712dc440f7da17a017a",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_turboquant.png",
+      "bytes": 49039,
+      "sha256": "d5c056d3da654e8fbaf4914e729b9e15624a42c1910628c53b2a150ab77be00a",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_llama_turboquant.png",
+      "bytes": 91479,
+      "sha256": "bb36a9cec32d6c6511852a8f29808f0fef9220a587d29ce5d89297c555ab49e1",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_results.json",
+      "bytes": 2879,
+      "sha256": "ccc5ca0b7627b282eb041d3f424ea3be38121b345ccd1090e49dc28ad630bfee",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure4_niah_extended.png",
+      "bytes": 94815,
+      "sha256": "657213cffbe161f16f9fa028a8038669c821d9d3604b186055c4fdcfdc620c46",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure1_ip_error_histograms.png",
+      "bytes": 131129,
+      "sha256": "f10febaf48ee8bc785acc06f1624a0338494f0ff948d1b972ffab231b0fb0318",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_llama_results.json",
+      "bytes": 7962,
+      "sha256": "2c83c87f124bb4afceb4b7d069fd13efef0ab69c04cc7a2d80c1fe04014d285d",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure2_ip_vs_avgip.png",
+      "bytes": 123318,
+      "sha256": "d1aac6e9c5606a1ef69d1994c9801c4ce8d2735fef1040f0afaa9d5a64c45b35",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure3_distortion_vs_bitwidth.png",
+      "bytes": 167473,
+      "sha256": "0ffada39c2b3ac30dfa2aa1d502edc8f43b343d48cde8b33c4841f3c356033bf",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/niah_llama_full_precision.png",
+      "bytes": 89655,
+      "sha256": "ab977ad396ccb3a3315fdfc869b5b58be6765cd79382e1dd6d1c1ff5bf38152b",
+      "mode": "100644"
+    },
+    {
+      "path": "experiments/results/figure4_niah.png",
+      "bytes": 47893,
+      "sha256": "12d6800bd50cfa1e4294b3165198056fccc2e298e247068c28aff410a35dae6a",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/ASIC_DESIGN_PROPOSAL.md",
+      "bytes": 59818,
+      "sha256": "3ee09855486a4d495a7d95ccf33150c6d5f1f1891902a97c21fd2ef9f39b5169",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/Makefile",
+      "bytes": 3733,
+      "sha256": "96fd7babef1f955ff3e3d9262baf38cfbd72cd8554664302088e47e94710c11f",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/tb/hw_expected_idx.hex",
+      "bytes": 12288,
+      "sha256": "e8f520b5bebc5d58781016124f5157b4f652316506b191564496ee5a656bdf44",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/tb/hw_expected_sign.hex",
+      "bytes": 1056,
+      "sha256": "0e3d45c9adcad877d5fe626c69e143f0d09cd492e1f0b80d8a7ddf79ffcc60e0",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/tb/hw_test_tokens.hex",
+      "bytes": 20480,
+      "sha256": "c8588cb13b914c82c0ee57d4c4222257c6b833e34df6b2873d1bd2f4ba4be6c0",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/lloyd_max_quant.sv",
+      "bytes": 7826,
+      "sha256": "a1f01649eb0f2d4bb3aab706aa2bcf8a3e68eeca2c269acc1876256e2307534e",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/token_preprocessor.sv",
+      "bytes": 6733,
+      "sha256": "4b4c6904bdaae825c7ce7b7c996185429d6d02a4f20381695eb915d2eaeecad6",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/rht_butterfly.sv",
+      "bytes": 5109,
+      "sha256": "ebe5f438d71999c80a1c84ddf8efa0b5a8e578ebe87cb4d34be3fce0b4fe3c91",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/gen_test_vectors.py",
+      "bytes": 2182,
+      "sha256": "775f8865ba6a4d5ab080677641189f28bc46739d7e0ec534dd74f3da07583a0c",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/tq_engine.sv",
+      "bytes": 13296,
+      "sha256": "60ba43a79cf2dda40176a90bd143ae9366e4645e0155a94db6ce4f54076a2f0a",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/page_buffer_tq_adapter.sv",
+      "bytes": 11654,
+      "sha256": "92883d8e53ace269ab102d4c4b5a588754d0794adaa411e018a37f91f5d207ff",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/tq_engine_tb.sv",
+      "bytes": 7068,
+      "sha256": "5ee056e95f742ecf9f4fe119ff7811739e8c57f2c0118df93919d31673b36ec5",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/rtl/qjl_engine.sv",
+      "bytes": 5723,
+      "sha256": "8d48a3c6c82714d3d76810a556a5580f19cd16cda062b4343d5c9c6664f174e5",
+      "mode": "100644"
+    },
+    {
+      "path": "hardware/sim/fixed_point_model.py",
+      "bytes": 16905,
+      "sha256": "b66055c787abcf805facd77676c3e36d953714d5c713818e429fc946690d50d0",
+      "mode": "100644"
+    }
+  ],
+  "excluded_files": [
+    {
+      "path": "TurboQuant.pdf",
+      "bytes": 861881,
+      "sha256": "431eb13926e10491f5fbd0bebd0813c51bd6c1e884426a1500c5db640b2997ab",
+      "mode": "100644",
+      "reason": "untracked_third_party_reference_pdf_disk_backup_only"
+    }
+  ],
+  "excluded_directories": [
+    "__pycache__",
+    ".claude",
+    ".git",
+    "experiments/__pycache__",
+    "hardware/sim/__pycache__"
+  ],
+  "git_repositories": [
+    {
+      "path": ".",
+      "head": "4be2b115fb2c811e499305ca90a99f0eb3f42c8b",
+      "branch": "main",
+      "status": " M experiments/实验报告.md\u0000?? hardware/ASIC_DESIGN_PROPOSAL.md\u0000?? hardware/Makefile\u0000?? hardware/rtl/gen_test_vectors.py\u0000?? hardware/rtl/lloyd_max_quant.sv\u0000?? hardware/rtl/page_buffer_tq_adapter.sv\u0000?? hardware/rtl/qjl_engine.sv\u0000?? hardware/rtl/rht_butterfly.sv\u0000?? hardware/rtl/token_preprocessor.sv\u0000?? hardware/rtl/tq_engine.sv\u0000?? hardware/rtl/tq_engine_tb.sv\u0000?? hardware/sim/fixed_point_model.py\u0000?? hardware/tb/hw_expected_idx.hex\u0000?? hardware/tb/hw_expected_sign.hex\u0000?? hardware/tb/hw_test_tokens.hex\u0000",
+      "tracked": "100644 3258e74693e7482acd846aaf5853a9669b39d673 0\t.gitignore\u0000100644 2417602720912911dca2e042df2a53c713513e28 0\tREADME.md\u0000100644 3bbc4df9e9cb31395a75b8717cc6bb5279db8a64 0\texperiments/exp_empirical_validation.py\u0000100644 3054739b9b2d42e34fa97097d0720f9698eaa3fa 0\texperiments/exp_figure2_ip_vs_avgip.py\u0000100644 c9d0505fa45c6bee530d5c97e0928036d337b4a3 0\texperiments/exp_longbench.py\u0000100644 c8e8b8b153fabf97d7c821e9a1113676d6fd51ab 0\texperiments/exp_niah.py\u0000100644 d0e1d123cfe2f9b2040d09bfe453466eb02f1335 0\texperiments/exp_niah_multigpu.py\u0000100644 3c83865d9607f6c957e0df3f55c376f4b83ccb7d 0\texperiments/exp_nn_search.py\u0000100644 3cdc59a592493c0a9db005af8c275209a9fb052c 0\texperiments/kv_cache_quant.py\u0000100644 fb54f10745960a3fcb13fa7520a03145af63a6c8 0\texperiments/render_figures.py\u0000100644 545e9b97712004cf70d49baa5d9011cc62f1f94e 0\texperiments/results/fig3_distortion.png\u0000100644 a4129ed4062bb58d284e3f72bca82907f30c56e9 0\texperiments/results/fig4_niah.png\u0000100644 91c86592d5703cc68b53c0591e81e9bc9753d739 0\texperiments/results/fig4_niah_multibit.png\u0000100644 34f843c78f85043568cfbac013338d161c7d0058 0\texperiments/results/fig5_longbench.png\u0000100644 06107c61d9f87a661c6a11c749d7f32f22ef9da5 0\texperiments/results/fig6_nn_recall.png\u0000100644 9b953e36cbb87dd2cf888f834ba9cd8e3aab1eb0 0\texperiments/results/figure1_ip_error_histograms.png\u0000100644 3806e9fc3273f410e19d864d55a2eeffc205e04b 0\texperiments/results/figure2_ip_vs_avgip.png\u0000100644 6b6563e59ebe7393d415da3198b24740a1a85d70 0\texperiments/results/figure3_distortion_vs_bitwidth.png\u0000100644 b75cb456ddc1034cfd764817d38dad00949f7742 0\texperiments/results/figure4_niah.png\u0000100644 4b98a99e85ab03c9a1142ec93a8e34bbf0ffeada 0\texperiments/results/figure4_niah_extended.png\u0000100644 bbbe6fdc9c9544c6c533eb1ee39423c454ca44b4 0\texperiments/results/figure_nn_recall.png\u0000100644 d7bb9b93dedc26cebb839b85da1e41783fe4becf 0\texperiments/results/longbench_results.json\u0000100644 f817868d4ac96ad41092a17b7e473f231708662c 0\texperiments/results/niah_extended_results.json\u0000100644 2b1e00c553369081c7244d2a21cccb2d91aa42cf 0\texperiments/results/niah_full_precision.png\u0000100644 f37ff45137e355b82c1d1e6586ef103bfe2dde74 0\texperiments/results/niah_llama_full_precision.png\u0000100644 da89badb24b7749fba7dc5a510b875e3b1aa8ee8 0\texperiments/results/niah_llama_results.json\u0000100644 42cbfc82ebec6347ceac803244e6049e7ec692d9 0\texperiments/results/niah_llama_turboquant.png\u0000100644 705502f58e566d053c72ae67f32e224708f0cb48 0\texperiments/results/niah_results.json\u0000100644 7b41d2a59bdc1cd4180a51b46600ac329eab0031 0\texperiments/results/niah_turboquant.png\u0000100644 770cfd90517d53f8dde0e497b94a5f4ff7dd2986 0\texperiments/实验报告.md\u0000100644 dbba3810f3747d08627b5326f1a0765d2628f4c5 0\trequirements.txt\u0000100644 1750626a7d5daea06b173b609bf7a9ab976615f5 0\tturboquant.py\u0000",
+      "origin": "git@github.com:dengls24/TurboQuant-Reproduction.git",
+      "refs": "refs/heads/main 4be2b115fb2c811e499305ca90a99f0eb3f42c8b\nrefs/remotes/origin/main 4be2b115fb2c811e499305ca90a99f0eb3f42c8b\n",
+      "diff_stat": " ...256\\236\\351\\252\\214\\346\\212\\245\\345\\221\\212.md\" | 80 +++++++++++++---------\n 1 file changed, 48 insertions(+), 32 deletions(-)\n"
+    }
+  ]
+}

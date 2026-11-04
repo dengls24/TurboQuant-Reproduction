@@ -1,0 +1,117 @@
+[
+  {
+    "file": "README.md",
+    "line": 162,
+    "text": "conda activate turboquant"
+  },
+  {
+    "file": "README.md",
+    "line": 177,
+    "text": "- `modelscope >= 1.10.0` (for downloading Llama-3.1 from ModelScope)"
+  },
+  {
+    "file": "README.md",
+    "line": 185,
+    "text": "from modelscope import snapshot_download"
+  },
+  {
+    "file": "README.md",
+    "line": 186,
+    "text": "snapshot_download('LLM-Research/Meta-Llama-3.1-8B-Instruct', cache_dir='~/.cache/modelscope')"
+  },
+  {
+    "file": "README.md",
+    "line": 424,
+    "text": "model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "README.md",
+    "line": 429,
+    "text": "tokenizer = AutoTokenizer.from_pretrained(\"meta-llama/Llama-3.1-8B-Instruct\")"
+  },
+  {
+    "file": "README.md",
+    "line": 454,
+    "text": "model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "requirements.txt",
+    "line": 6,
+    "text": "modelscope>=1.10.0"
+  },
+  {
+    "file": "experiments/exp_niah.py",
+    "line": 201,
+    "text": "            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)"
+  },
+  {
+    "file": "experiments/exp_niah.py",
+    "line": 202,
+    "text": "            model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "experiments/exp_niah.py",
+    "line": 254,
+    "text": "            model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "experiments/exp_longbench.py",
+    "line": 180,
+    "text": "    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)"
+  },
+  {
+    "file": "experiments/exp_longbench.py",
+    "line": 198,
+    "text": "        model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 34,
+    "text": "    \"/home/xinhuogrp/denglishuo/.cache/modelscope/hub/models/LLM-Research/Meta-Llama-3___1-8B-Instruct\","
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 301,
+    "text": "    model = AutoModelForCausalLM.from_pretrained("
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 445,
+    "text": "        os.path.expanduser(\"~/.cache/modelscope/hub/LLM-Research/Meta-Llama-3*8B-Instruct*\"),"
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 446,
+    "text": "        \"/home/xinhuogrp/denglishuo/.cache/modelscope/**/Meta-Llama-3*8B-Instruct*\","
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 468,
+    "text": "            from modelscope import snapshot_download"
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 469,
+    "text": "            model_path = snapshot_download("
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 471,
+    "text": "                cache_dir=os.path.expanduser('~/.cache/modelscope'))"
+  },
+  {
+    "file": "experiments/exp_niah_multigpu.py",
+    "line": 484,
+    "text": "    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)"
+  },
+  {
+    "file": "experiments/results/niah_extended_results.json",
+    "line": 2,
+    "text": "  \"model\": \"/home/xinhuogrp/denglishuo/.cache/modelscope/hub/models/LLM-Research/Meta-Llama-3___1-8B-Instruct\","
+  },
+  {
+    "file": "experiments/results/niah_llama_results.json",
+    "line": 2,
+    "text": "  \"model\": \"/home/xinhuogrp/denglishuo/.cache/modelscope/hub/models/LLM-Research/Meta-Llama-3___1-8B-Instruct\","
+  }
+]
